@@ -1,0 +1,616 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Splitline — Smart Stopwatch &amp; Lap Tracker</title>
+
+<!-- Tailwind -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.4.1/tailwind.min.js"></script>
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- Fonts: a tabular monospace for the timing readout, a grotesk sans for UI text -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: {
+          mono: ['"JetBrains Mono"', 'monospace'],
+          sans: ['"Manrope"', 'sans-serif'],
+        },
+        colors: {
+          track: {
+            bg: '#0B1120',
+            panel: '#111A2C',
+            line: '#22304A',
+            fg: '#E7ECF6',
+            mute: '#8592AC',
+          },
+          signal: '#FF4B2B',   /* running-time LED */
+          best: '#28E0B9',     /* best-lap teal */
+          slow: '#F5A524',     /* slow-lap amber */
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  :root { color-scheme: dark; }
+  html.light { color-scheme: light; }
+
+  * { -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: 'Manrope', sans-serif;
+    background: #0B1120;
+    color: #E7ECF6;
+    transition: background-color .25s ease, color .25s ease;
+  }
+  html.light body {
+    background: #F4F6FB;
+    color: #101826;
+  }
+
+  .panel {
+    background: #111A2C;
+    border: 1px solid #22304A;
+    transition: background-color .25s ease, border-color .25s ease;
+  }
+  html.light .panel {
+    background: #FFFFFF;
+    border-color: #DCE3F0;
+  }
+
+  .hairline { border-color: #22304A; }
+  html.light .hairline { border-color: #DCE3F0; }
+
+  .mute { color: #8592AC; }
+  html.light .mute { color: #5B6780; }
+
+  /* Digital readout */
+  .readout {
+    font-family: 'JetBrains Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  .readout .cs { opacity: 0.55; font-size: 0.5em; }
+
+  .glow {
+    text-shadow: 0 0 28px rgba(255, 75, 43, 0.35);
+  }
+  html.light .glow {
+    text-shadow: none;
+  }
+
+  /* Buttons */
+  .btn {
+    font-family: 'Manrope', sans-serif;
+    font-weight: 700;
+    transition: transform .12s ease, filter .15s ease, background-color .15s ease;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn:disabled:active { transform: none; }
+
+  /* Track-style pulse for the lap button when running */
+  @keyframes pulseRing {
+    0% { box-shadow: 0 0 0 0 rgba(255,75,43,0.45); }
+    100% { box-shadow: 0 0 0 14px rgba(255,75,43,0); }
+  }
+  .pulsing { animation: pulseRing 1.6s ease-out infinite; }
+
+  table.laps thead th {
+    font-weight: 600;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    color: #8592AC;
+  }
+  html.light table.laps thead th { color: #5B6780; }
+
+  table.laps tbody tr { border-top: 1px solid #22304A; }
+  html.light table.laps tbody tr { border-top: 1px solid #DCE3F0; }
+
+  table.laps tbody tr.best-row { background: rgba(40, 224, 185, 0.08); }
+  table.laps tbody tr.slow-row { background: rgba(245, 165, 36, 0.07); }
+
+  .lap-row-enter {
+    animation: rowIn .28s ease-out;
+  }
+  @keyframes rowIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .del-btn { opacity: 0.45; transition: opacity .15s ease, color .15s ease; }
+  .del-btn:hover { opacity: 1; color: #FF4B2B; }
+
+  ::-webkit-scrollbar { height: 8px; width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #22304A; border-radius: 4px; }
+  html.light ::-webkit-scrollbar-thumb { background: #DCE3F0; }
+
+  .toast {
+    transition: opacity .3s ease, transform .3s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pulsing, .lap-row-enter { animation: none !important; }
+    * { transition: none !important; }
+  }
+
+  input[type="text"]:focus-visible,
+  button:focus-visible {
+    outline: 2px solid #28E0B9;
+    outline-offset: 2px;
+  }
+    /* ---- Face / Ring ---- */
+    .circle-face {
+      position: relative;
+      width: 250px;
+      height: 250px;
+      margin: 4px auto 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .circle-face__glow {
+      position: absolute;
+      inset: 20px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--accent-run-soft), transparent 70%);
+      opacity: 0;
+      transform: scale(0.85);
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+    }
+
+    .circle-face[data-state="running"] .face__glow {
+      opacity: 1;
+      animation: glowPulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes glowPulse {
+      0%, 100% { transform: scale(0.88); opacity: 0.55; }
+      50% { transform: scale(1.05); opacity: 1; }
+    }
+
+    .circle-face__svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .circle-face__ticks line {
+      stroke: var(--track);
+      stroke-width: 1.5;
+    }
+    .circle-face__ticks line.major {
+      stroke: #3a4454;
+      stroke-width: 2;
+    }
+
+    .circle-face__ring { transform: rotate(-90deg); transform-origin: 125px 125px; }
+
+    .circle-face__track, .face__progress {
+      fill: none;
+      stroke-width: 4;
+    }
+
+    .circle-face__track { stroke: var(--track); }
+
+    .circle-face__progress {
+      stroke: var(--accent-run);
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.1s linear, stroke 0.25s ease;
+      filter: drop-shadow(0 0 6px var(--accent-run-soft));
+    }
+
+    .circle-face__progress[data-state="paused"] {
+      stroke: var(--text-muted);
+      filter: none;
+    }
+
+    .circle-face__head {
+      fill: var(--accent-run);
+      filter: drop-shadow(0 0 5px var(--accent-run));
+      transition: fill 0.25s ease, opacity 0.2s ease;
+      opacity: 0;
+    }
+    .circle-face__head[data-state="running"] { opacity: 1; }
+    .circle-face__head[data-state="paused"] { fill: var(--text-muted); opacity: 1; filter: none; }
+
+    .burst-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .burst-dot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 5px;
+      height: 5px;
+      margin: -2.5px 0 0 -2.5px;
+      border-radius: 50%;
+      background: var(--accent-lap);
+      box-shadow: 0 0 6px var(--accent-lap);
+      animation: burstFly 0.65s cubic-bezier(.2,.8,.3,1) forwards;
+    }
+
+    @keyframes burstFly {
+      0% { transform: rotate(var(--angle)) translateX(0) scale(1); opacity: 1; }
+      100% { transform: rotate(var(--angle)) translateX(78px) scale(0.2); opacity: 0; }
+    }
+
+    .circle-face__readout {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      text-align: center;
+    }
+
+    .circle-face__state {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      min-height: 1em;
+      letter-spacing: 0.02em;
+    }
+
+    .circle-face__time {
+      font-family: var(--font-mono);
+      font-size: 1.7rem;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+      display: flex;
+      align-items: baseline;
+    }
+
+    .digit-group {
+      display: inline-block;
+      min-width: 1ch;
+    }
+
+    .digit-group.flip {
+      animation: flipDigit 0.4s ease;
+    }
+
+    @keyframes flipDigit {
+      0%   { transform: translateY(0); color: var(--text-primary); }
+      35%  { transform: translateY(-7px); color: var(--accent-run); }
+      70%  { transform: translateY(3px); }
+      100% { transform: translateY(0); color: var(--text-primary); }
+    }
+
+    .time-sep { opacity: 0.45; margin: 0 1px; }
+    .circle-face__time .digit-group--ms { font-size: 0.85em; color: var(--text-muted); margin-left: 2px; }
+
+
+</style>
+</head>
+
+<body class="min-h-screen">
+
+<div class="max-w-3xl mx-auto px-5 py-8 sm:py-12">
+
+  <!-- Header -->
+  <header class="flex items-start justify-between mb-8">
+    <div>
+      <h1 class="text-2xl sm:text-[28px] font-extrabold tracking-tight leading-none">Splitline</h1>
+      <p class="mute text-sm mt-1.5">A stopwatch that keeps score of your own splits.</p>
+    </div>
+    <button id="themeToggle" aria-label="Toggle dark or light mode"
+      class="btn shrink-0 w-11 h-11 rounded-full panel flex items-center justify-center text-lg">
+      <span id="themeIcon">🌙</span>
+    </button>
+  </header>
+
+  <!-- Circular Stopwatch Hero -->
+  <section class="panel rounded-2xl px-6 py-8 sm:py-10 mb-6 relative overflow-hidden">
+    <div class="circle-face" id="face" data-state="idle" aria-label="Elapsed time">
+      <div class="circle-face__glow"></div>
+      <svg class="circle-face__svg" viewBox="0 0 250 250" aria-hidden="true">
+        <g class="circle-face__ticks" id="ticks"></g>
+        <g class="circle-face__ring">
+          <circle class="circle-face__track" cx="125" cy="125" r="108" />
+          <circle class="circle-face__progress" id="ringProgress" cx="125" cy="125" r="108" />
+        </g>
+        <circle class="circle-face__head" id="ringHead" r="4" />
+      </svg>
+      <div class="burst-layer" id="burstLayer"></div>
+      <div class="circle-face__readout">
+        <span class="circle-face__state" id="stateLabel" aria-live="polite">Ready</span>
+        <span class="circle-face__time" role="timer" aria-live="off">
+          <span class="digit-group" id="hh">00</span><span class="time-sep">:</span><span class="digit-group" id="mm">00</span><span class="time-sep">:</span><span class="digit-group" id="ss">00</span><span class="time-sep">.</span><span class="digit-group digit-group--ms" id="ms">000</span>
+        </span>
+      </div>
+    </div>
+    <p id="statusLine" class="mute text-sm mt-1 tracking-wide text-center">Ready — press start or hit space</p>
+
+    <div class="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mt-7">
+      <button id="startBtn" class="btn rounded-xl py-3.5 bg-signal text-white text-sm sm:text-base">▶ Start</button>
+      <button id="pauseBtn" disabled class="btn rounded-xl py-3.5 panel border hairline text-sm sm:text-base">⏸ Pause</button>
+      <button id="lapBtn" disabled class="btn rounded-xl py-3.5 panel border hairline text-sm sm:text-base">🏁 Lap</button>
+      <button id="resetBtn" class="btn rounded-xl py-3.5 panel border hairline text-sm sm:text-base">↻ Reset</button>
+    </div>
+    <p class="mute text-center text-xs mt-5 relative">
+      <kbd class="px-1.5 py-0.5 rounded border hairline">Space</kbd> start/pause ·
+      <kbd class="px-1.5 py-0.5 rounded border hairline">L</kbd> lap ·
+      <kbd class="px-1.5 py-0.5 rounded border hairline">R</kbd> reset
+    </p>
+  </section>
+
+  <!-- Stat cards -->
+  <section class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+    <div class="panel rounded-xl px-4 py-4 text-center">
+      <div class="mute text-xs mb-1">Total laps</div>
+      <div id="statTotal" class="text-2xl font-bold readout">0</div>
+    </div>
+    <div class="panel rounded-xl px-4 py-4 text-center">
+      <div class="mute text-xs mb-1">Best lap</div>
+      <div id="statBest" class="text-2xl font-bold readout text-best">—</div>
+    </div>
+    <div class="panel rounded-xl px-4 py-4 text-center">
+      <div class="mute text-xs mb-1">Average lap</div>
+      <div id="statAvg" class="text-2xl font-bold readout">—</div>
+    </div>
+    <div class="panel rounded-xl px-4 py-4 text-center">
+      <div class="mute text-xs mb-1">Slowest lap</div>
+      <div id="statSlow" class="text-2xl font-bold readout text-slow">—</div>
+    </div>
+  </section>
+
+  <!-- Lap history -->
+  <section class="panel rounded-2xl mb-6 overflow-hidden">
+    <div class="flex items-center justify-between px-5 pt-5 pb-3">
+      <h2 class="font-bold text-base">Lap history</h2>
+      <div class="flex items-center gap-2">
+        <input id="searchLap" type="text" placeholder="Find lap #"
+          class="hidden sm:block text-sm bg-transparent border hairline rounded-lg px-3 py-1.5 w-28 focus:w-36 transition-all outline-none" />
+        <button id="exportBtn" class="btn text-xs sm:text-sm px-3 py-1.5 rounded-lg border hairline">
+          ⬇ Export CSV
+        </button>
+      </div>
+    </div>
+    <div class="px-2 sm:px-3 pb-2 sm:hidden">
+      <input id="searchLapMobile" type="text" placeholder="Find lap #"
+        class="w-full text-sm bg-transparent border hairline rounded-lg px-3 py-2 outline-none" />
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="laps w-full text-sm">
+        <thead>
+          <tr>
+            <th class="text-left px-5 py-2">Lap</th>
+            <th class="text-left px-3 py-2">Time</th>
+            <th class="text-left px-3 py-2">Diff.</th>
+            <th class="text-left px-3 py-2">Status</th>
+            <th class="px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="lapBody"></tbody>
+      </table>
+    </div>
+
+    <div id="emptyState" class="text-center py-10 mute text-sm">
+      No laps yet — start the clock, then press lap to record a split.
+    </div>
+  </section>
+
+  <!-- Chart -->
+  <section class="panel rounded-2xl px-5 py-5 mb-6">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-bold text-base">Performance across laps</h2>
+      <span class="mute text-xs">Lower is faster</span>
+    </div>
+    <div class="h-56">
+      <canvas id="lapChart"></canvas>
+    </div>
+  </section>
+
+  <!-- Session summary (shown after reset with laps present) -->
+  <section id="summaryPanel" class="panel rounded-2xl px-5 py-5 mb-6 hidden">
+    <h2 class="font-bold text-base mb-3">Session complete</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+      <div><div class="mute text-xs">Total time</div><div id="sumTotal" class="readout font-semibold">—</div></div>
+      <div><div class="mute text-xs">Total laps</div><div id="sumLaps" class="readout font-semibold">—</div></div>
+      <div><div class="mute text-xs">Best lap</div><div id="sumBest" class="readout font-semibold text-best">—</div></div>
+      <div><div class="mute text-xs">Slowest lap</div><div id="sumSlow" class="readout font-semibold text-slow">—</div></div>
+      <div><div class="mute text-xs">Average lap</div><div id="sumAvg" class="readout font-semibold">—</div></div>
+      <div><div class="mute text-xs">Consistency</div><div id="sumVerdict" class="font-semibold">—</div></div>
+    </div>
+  </section>
+
+  <footer class="text-center mute text-xs pb-4">
+    Your laps are saved to this browser automatically — refresh, and they'll still be here.
+  </footer>
+</div>
+
+<div id="toast" class="toast fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-lg bg-best text-[#08201A] text-sm font-semibold opacity-0 pointer-events-none">
+  🎉 5 laps completed!
+</div>
+
+<script>
+/* Splitline Circular Stopwatch & Lap Tracker */
+const STORAGE_KEY = 'splitline.session.v1';
+const THEME_KEY = 'splitline.theme';
+
+let elapsedMs = 0, startedAt = null, running = false, tickHandle = null;
+let laps = [], lastMilestone = 0;
+let prevHH = null, prevMM = null, prevSS = null;
+let chartInstance = null;
+
+const face = document.getElementById('face');
+const stateLabel = document.getElementById('stateLabel');
+const hhEl = document.getElementById('hh'), mmEl = document.getElementById('mm');
+const ssEl = document.getElementById('ss'), msEl = document.getElementById('ms');
+const ringProgress = document.getElementById('ringProgress'), ringHead = document.getElementById('ringHead');
+const ticksGroup = document.getElementById('ticks'), burstLayer = document.getElementById('burstLayer');
+const startBtn = document.getElementById('startBtn'), pauseBtn = document.getElementById('pauseBtn');
+const lapBtn = document.getElementById('lapBtn'), resetBtn = document.getElementById('resetBtn');
+const statusLine = document.getElementById('statusLine');
+const lapBody = document.getElementById('lapBody'), emptyState = document.getElementById('emptyState');
+const statTotal = document.getElementById('statTotal'), statBest = document.getElementById('statBest');
+const statAvg = document.getElementById('statAvg'), statSlow = document.getElementById('statSlow');
+const exportBtn = document.getElementById('exportBtn'), searchLap = document.getElementById('searchLap');
+const searchLapMobile = document.getElementById('searchLapMobile');
+const themeToggle = document.getElementById('themeToggle'), themeIcon = document.getElementById('themeIcon');
+const toast = document.getElementById('toast'), summaryPanel = document.getElementById('summaryPanel');
+
+const CX=125,CY=125,R=108,CIRCUMFERENCE=2*Math.PI*R;
+ringProgress.style.strokeDasharray=String(CIRCUMFERENCE);
+ringProgress.style.strokeDashoffset=String(CIRCUMFERENCE);
+
+(function buildTicks(){
+  const frag=document.createDocumentFragment();
+  for(let i=0;i<60;i++){
+    const a=i/60*2*Math.PI-Math.PI/2, major=i%5===0;
+    const ro=122, ri=major?111:116;
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',CX+ro*Math.cos(a)); line.setAttribute('y1',CY+ro*Math.sin(a));
+    line.setAttribute('x2',CX+ri*Math.cos(a)); line.setAttribute('y2',CY+ri*Math.sin(a));
+    if(major) line.classList.add('major'); frag.appendChild(line);
+  }
+  ticksGroup.appendChild(frag);
+})();
+
+function pad(n,len=2){return String(n).padStart(len,'0');}
+function parts(ms){
+  ms=Math.max(0,Math.floor(ms)); const milli=ms%1000, sec=Math.floor(ms/1000)%60;
+  const min=Math.floor(ms/60000)%60, hr=Math.floor(ms/3600000);
+  return {hh:pad(hr),mm:pad(min),ss:pad(sec),ms:pad(milli,3)};
+}
+function formatShort(ms){
+  const cs=Math.round(ms/10), sec=Math.floor(cs/100)%60, min=Math.floor(cs/6000);
+  return min>0?`${min}:${pad(sec)}.${pad(cs%100)}`:`${sec}.${pad(cs%100)}s`;
+}
+function currentElapsed(){return elapsedMs+(running?Date.now()-startedAt:0);}
+
+function flip(el,val,prev){
+  if(val!==prev){el.textContent=val;el.classList.remove('flip');void el.offsetWidth;el.classList.add('flip');}
+}
+function renderTime(ms){
+  const p=parts(ms); flip(hhEl,p.hh,prevHH); flip(mmEl,p.mm,prevMM); flip(ssEl,p.ss,prevSS);
+  msEl.textContent=p.ms; prevHH=p.hh;prevMM=p.mm;prevSS=p.ss;
+  const f=(ms%60000)/60000;
+  ringProgress.style.strokeDashoffset=String(CIRCUMFERENCE*(1-f));
+  ringProgress.setAttribute('data-state',running?'running':(ms>0?'paused':'idle'));
+  ringHead.setAttribute('data-state',running?'running':(ms>0?'paused':'idle'));
+  const a=f*2*Math.PI-Math.PI/2;
+  ringHead.setAttribute('cx',CX+R*Math.cos(a)); ringHead.setAttribute('cy',CY+R*Math.sin(a));
+}
+function tick(){if(!running)return;renderTime(currentElapsed());tickHandle=requestAnimationFrame(tick);}
+
+function updateControls(){
+  face.dataset.state=running?'running':(elapsedMs>0?'paused':'idle');
+  pauseBtn.disabled=!running; lapBtn.disabled=!running; resetBtn.disabled=!(elapsedMs>0||laps.length);
+  startBtn.disabled=running;
+  startBtn.textContent=running?'▶ Running':(elapsedMs>0?'▶ Resume':'▶ Start');
+  pauseBtn.textContent='⏸ Pause';
+  stateLabel.textContent=running?'Running':(elapsedMs>0?'Paused':'Ready');
+}
+function start(){
+  if(running)return; running=true;startedAt=Date.now();summaryPanel.classList.add('hidden');
+  updateControls();tickHandle=requestAnimationFrame(tick);saveSession();
+}
+function pause(){
+  if(!running)return;elapsedMs+=Date.now()-startedAt;running=false;cancelAnimationFrame(tickHandle);
+  statusLine.textContent='Paused';renderTime(elapsedMs);updateControls();saveSession();
+}
+function reset(){
+  const had=laps.length>0, final=currentElapsed(); if(had)showSummary(final);
+  cancelAnimationFrame(tickHandle);running=false;elapsedMs=0;startedAt=null;laps=[];lastMilestone=0;
+  statusLine.textContent='Ready — press start or hit space';prevHH=prevMM=prevSS=null;
+  renderTime(0);renderLaps();renderStats();renderChart();updateControls();saveSession();
+}
+function recordLap(){
+  if(!running)return; const total=currentElapsed();
+  const prev=laps.length?laps[laps.length-1].totalMs:0;
+  laps.push({number:laps.length+1,totalMs:total,lapMs:total-prev});
+  renderLaps();renderStats();renderChart();triggerBurst();checkMilestone();saveSession();
+}
+function deleteLap(number){
+  laps=laps.filter(l=>l.number!==number);laps.forEach((l,i)=>l.number=i+1);
+  laps.forEach((l,i)=>l.lapMs=l.totalMs-(i?laps[i-1].totalMs:0));
+  renderLaps();renderStats();renderChart();saveSession();
+}
+function bestLap(){return laps.length?laps.reduce((a,b)=>b.lapMs<a.lapMs?b:a):null;}
+function slowestLap(){return laps.length?laps.reduce((a,b)=>b.lapMs>a.lapMs?b:a):null;}
+function averageLapMs(){return laps.length?laps.reduce((s,l)=>s+l.lapMs,0)/laps.length:0;}
+
+function renderLaps(filter=''){
+  const q=filter.trim(),best=bestLap(),slow=slowestLap();
+  const rows=laps.slice().reverse().filter(l=>!q||String(l.number).padStart(2,'0').includes(q)||String(l.number)===q).map(l=>{
+    const isBest=best&&l.number===best.number&&laps.length>1;
+    const isSlow=slow&&l.number===slow.number&&laps.length>1&&!isBest;
+    const idx=laps.findIndex(x=>x.number===l.number),diff=idx>0?l.lapMs-laps[idx-1].lapMs:null;
+    const status=isBest?'<span class="text-best font-semibold">🥇 Best</span>':isSlow?'<span class="text-slow font-semibold">🐢 Slowest</span>':'<span class="mute">Normal</span>';
+    const diffHtml=diff===null?'<span class="mute">—</span>':`<span class="${diff<=0?'text-best':'text-slow'}">${diff<=0?'−':'+'}${formatShort(Math.abs(diff))}</span>`;
+    return `<tr class="${isBest?'best-row':''} ${isSlow?'slow-row':''} lap-row-enter">
+      <td class="px-5 py-2.5 font-semibold readout">${String(l.number).padStart(2,'0')}</td>
+      <td class="px-3 py-2.5 readout">${formatShort(l.lapMs)}</td><td class="px-3 py-2.5 readout">${diffHtml}</td>
+      <td class="px-3 py-2.5">${status}</td><td class="px-3 py-2.5 text-right"><button class="del-btn text-xs" data-del="${l.number}">✕</button></td></tr>`;
+  }).join('');
+  lapBody.innerHTML=rows;emptyState.classList.toggle('hidden',laps.length>0);
+  lapBody.parentElement.parentElement.classList.toggle('hidden',laps.length===0);
+  lapBody.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>deleteLap(+b.dataset.del)));
+}
+function renderStats(){
+  const b=bestLap(),s=slowestLap();statTotal.textContent=laps.length;
+  statBest.textContent=b?formatShort(b.lapMs):'—';statSlow.textContent=s?formatShort(s.lapMs):'—';
+  statAvg.textContent=laps.length?formatShort(averageLapMs()):'—';
+}
+function renderChart(){
+  const ctx=document.getElementById('lapChart'); if(!ctx||typeof Chart==='undefined')return;
+  const light=document.documentElement.classList.contains('light'),grid=light?'#DCE3F0':'#22304A',text=light?'#5B6780':'#8592AC';
+  const data={labels:laps.map(l=>l.number),datasets:[{label:'Lap time (s)',data:laps.map(l=>+(l.lapMs/1000).toFixed(2)),borderColor:'#FF4B2B',backgroundColor:'rgba(255,75,43,.12)',pointBackgroundColor:laps.map(l=>bestLap()?.number===l.number&&laps.length>1?'#28E0B9':slowestLap()?.number===l.number&&laps.length>1?'#F5A524':'#FF4B2B'),pointRadius:4,tension:.25,fill:true}]};
+  const options={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Lap',color:text},ticks:{color:text},grid:{color:grid}},y:{title:{display:true,text:'Seconds',color:text},ticks:{color:text},grid:{color:grid},beginAtZero:true}}};
+  if(chartInstance){chartInstance.data=data;chartInstance.options=options;chartInstance.update();}else chartInstance=new Chart(ctx,{type:'line',data,options});
+}
+function triggerBurst(){
+  for(let i=0;i<10;i++){const d=document.createElement('div');d.className='burst-dot';d.style.setProperty('--angle',(36*i+Math.random()*12-6)+'deg');burstLayer.appendChild(d);d.addEventListener('animationend',()=>d.remove());}
+}
+function checkMilestone(){const m=Math.floor(laps.length/5)*5;if(m>0&&m!==lastMilestone){lastMilestone=m;showToast(`🎉 ${m} laps completed! Great progress.`);}}
+function showToast(msg){toast.textContent=msg;toast.style.opacity='1';clearTimeout(showToast._t);showToast._t=setTimeout(()=>toast.style.opacity='0',2600);}
+function showSummary(finalMs){
+  const b=bestLap(),s=slowestLap(),a=averageLapMs(),spread=s&&b?s.lapMs-b.lapMs:0;
+  document.getElementById('sumTotal').textContent=formatShort(finalMs);document.getElementById('sumLaps').textContent=laps.length;
+  document.getElementById('sumBest').textContent=b?formatShort(b.lapMs):'—';document.getElementById('sumSlow').textContent=s?formatShort(s.lapMs):'—';
+  document.getElementById('sumAvg').textContent=a?formatShort(a):'—';
+  document.getElementById('sumVerdict').textContent=a?(spread/a<.15?'Very consistent':spread/a<.4?'Steady':'Variable'):'—';summaryPanel.classList.remove('hidden');
+}
+function exportCsv(){
+  if(!laps.length){showToast('No laps to export yet');return;}
+  const b=bestLap(),s=slowestLap(),rows=[['lap','time_s','difference_s','status']];
+  laps.forEach((l,i)=>{const diff=i?((l.lapMs-laps[i-1].lapMs)/1000).toFixed(2):'-';let st='Normal';if(b&&l.number===b.number&&laps.length>1)st='Best';else if(s&&l.number===s.number&&laps.length>1)st='Slowest';rows.push([l.number,(l.lapMs/1000).toFixed(2),diff,st]);});
+  const a=document.createElement('a'),url=URL.createObjectURL(new Blob([rows.map(r=>r.join(',')).join('\n')],{type:'text/csv'}));
+  a.href=url;a.download=`splitline-laps-${Date.now()}.csv`;a.click();URL.revokeObjectURL(url);
+}
+function applyTheme(mode){document.documentElement.classList.toggle('light',mode==='light');themeIcon.textContent=mode==='light'?'☀️':'🌙';localStorage.setItem(THEME_KEY,mode);renderChart();}
+function saveSession(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({elapsedMs:currentElapsed(),running:false,laps}));}catch(e){}}
+function restoreSession(){
+  try{const d=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');if(!d)return;elapsedMs=d.elapsedMs||0;laps=Array.isArray(d.laps)?d.laps:[];lastMilestone=Math.floor(laps.length/5)*5;if(elapsedMs>0||laps.length)statusLine.textContent=elapsedMs>0?'Paused — previous session restored':'Ready — press start or hit space';}catch(e){}
+}
+
+startBtn.addEventListener('click',start);pauseBtn.addEventListener('click',pause);lapBtn.addEventListener('click',recordLap);resetBtn.addEventListener('click',reset);
+exportBtn.addEventListener('click',exportCsv);themeToggle.addEventListener('click',()=>applyTheme(document.documentElement.classList.contains('light')?'dark':'light'));
+[searchLap,searchLapMobile].forEach(i=>i.addEventListener('input',()=>renderLaps(i.value)));
+document.addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName))return;
+  if(e.code==='Space'){e.preventDefault();running?pause():start();}
+  else if(e.key.toLowerCase()==='l'&&!lapBtn.disabled)recordLap();
+  else if(e.key.toLowerCase()==='r')reset();
+});
+(function init(){applyTheme(localStorage.getItem(THEME_KEY)||'dark');restoreSession();renderTime(elapsedMs);renderLaps();renderStats();renderChart();updateControls();})();
+</script>
+</body>
+</html>
