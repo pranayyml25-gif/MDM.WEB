@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Registration Form</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen bg-gradient-to-br from-blue-100 to-purple-200
+             flex items-center justify-center p-5">
+
+    <div class="bg-white w-full max-w-lg p-8 rounded-2xl shadow-2xl">
+
+        <!-- Heading -->
+        <div class="text-center mb-7">
+            <h1 class="text-3xl font-bold text-purple-700">
+                Student Registration
+            </h1>
+
+            <p class="text-gray-500 mt-2">
+                Enter your details to register
+            </p>
+        </div>
+
+        <!-- Registration Form -->
+        <form id="registrationForm" class="space-y-5">
+
+            <!-- Name -->
+            <div>
+                <label class="font-semibold text-gray-700">
+                    Full Name
+                </label>
+
+                <input
+                    id="name"
+                    type="text"
+                    placeholder="Enter your full name"
+                    class="w-full mt-1 p-3 border rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-purple-500">
+
+                <p id="nameError" class="text-red-500 text-sm mt-1"></p>
+            </div>
+
+
+            <!-- Email -->
+            <div>
+                <label class="font-semibold text-gray-700">
+                    Email Address
+                </label>
+
+                <input
+                    id="email"
+                    type="text"
+                    placeholder="example@gmail.com"
+                    class="w-full mt-1 p-3 border rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-purple-500">
+
+                <p id="emailError" class="text-red-500 text-sm mt-1"></p>
+            </div>
+
+
+            <!-- Password -->
+            <div>
+                <label class="font-semibold text-gray-700">
+                    Password
+                </label>
+
+                <input
+                    id="password"
+                    type="password"
+                    placeholder="Enter password"
+                    class="w-full mt-1 p-3 border rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-purple-500">
+
+                <p id="passwordError" class="text-red-500 text-sm mt-1"></p>
+            </div>
+
+
+            <!-- Mobile -->
+            <div>
+                <label class="font-semibold text-gray-700">
+                    Mobile Number
+                </label>
+
+                <input
+                    id="mobile"
+                    type="text"
+                    placeholder="Enter 10-digit mobile number"
+                    maxlength="10"
+                    class="w-full mt-1 p-3 border rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-purple-500">
+
+                <p id="mobileError" class="text-red-500 text-sm mt-1"></p>
+            </div>
+
+
+            <!-- Course -->
+            <div>
+                <label class="font-semibold text-gray-700">
+                    Select Course
+                </label>
+
+                <select
+                    id="course"
+                    class="w-full mt-1 p-3 border rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-purple-500">
+
+                    <option value="">Select a course</option>
+                    <option value="B.Tech">B.Tech</option>
+                    <option value="BCA">BCA</option>
+                    <option value="B.Sc">B.Sc</option>
+                    <option value="MCA">MCA</option>
+
+                </select>
+
+                <p id="courseError" class="text-red-500 text-sm mt-1"></p>
+            </div>
+
+
+            <!-- Submit Button -->
+            <button
+                type="submit"
+                class="w-full bg-purple-600 text-white py-3 rounded-lg
+                font-bold hover:bg-purple-700 transition duration-300">
+
+                Register Now
+
+            </button>
+
+        </form>
+
+
+        <!-- Success Message -->
+        <div
+            id="successMessage"
+            class="hidden mt-5 p-4 bg-green-100 text-green-700
+            rounded-lg text-center font-semibold">
+
+            Registration successful!
+
+        </div>
+
+
+        <!-- Footer -->
+        <footer class="text-center mt-8 pt-5 border-t border-gray-200">
+
+            <p class="text-gray-500 text-sm">
+                Created by
+            </p>
+
+            <p class="text-xl font-bold text-purple-700">
+               PRANAY YADAV
+            </p>
+
+        </footer>
+
+    </div>
+
+
+    <!-- JavaScript Validation -->
+    <script>
+
+        const form = document.getElementById("registrationForm");
+
+        form.addEventListener("submit", function(event) {
+
+            // Prevent actual form submission
+            event.preventDefault();
+
+            // Get values
+            const name = document.getElementById("name").value.trim();
+            const email = document.getElementById("email").value.trim();
+            const password = document.getElementById("password").value;
+            const mobile = document.getElementById("mobile").value.trim();
+            const course = document.getElementById("course").value;
+
+            // Error elements
+            const nameError = document.getElementById("nameError");
+            const emailError = document.getElementById("emailError");
+            const passwordError = document.getElementById("passwordError");
+            const mobileError = document.getElementById("mobileError");
+            const courseError = document.getElementById("courseError");
+
+            // Clear previous errors
+            nameError.textContent = "";
+            emailError.textContent = "";
+            passwordError.textContent = "";
+            mobileError.textContent = "";
+            courseError.textContent = "";
+
+            let valid = true;
+
+
+            // Name validation
+            if (name === "") {
+                nameError.textContent = "Name is required.";
+                valid = false;
+            }
+
+
+            // Email validation
+            const emailPattern =
+                /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+            if (email === "") {
+                emailError.textContent = "Email is required.";
+                valid = false;
+            }
+            else if (!emailPattern.test(email)) {
+                emailError.textContent = "Enter a valid email address.";
+                valid = false;
+            }
+
+
+            // Password validation
+            if (password === "") {
+                passwordError.textContent = "Password is required.";
+                valid = false;
+            }
+            else if (password.length < 6) {
+                passwordError.textContent =
+                    "Password must be at least 6 characters.";
+                valid = false;
+            }
+
+
+            // Mobile validation
+            const mobilePattern = /^[0-9]{10}$/;
+
+            if (mobile === "") {
+                mobileError.textContent =
+                    "Mobile number is required.";
+                valid = false;
+            }
+            else if (!mobilePattern.test(mobile)) {
+                mobileError.textContent =
+                    "Enter a valid 10-digit mobile number.";
+                valid = false;
+            }
+
+
+            // Course validation
+            if (course === "") {
+                courseError.textContent =
+                    "Please select a course.";
+                valid = false;
+            }
+
+
+            // If everything is valid
+            if (valid) {
+
+                document.getElementById("successMessage")
+                    .classList.remove("hidden");
+
+                form.reset();
+            }
+            else {
+
+                document.getElementById("successMessage")
+                    .classList.add("hidden");
+            }
+
+        });
+
+    </script>
+
+</body>
+</html>
