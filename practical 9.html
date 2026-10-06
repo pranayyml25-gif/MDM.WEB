@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal To-Do List</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-lg p-6">
+
+        <!-- Heading -->
+        <h1 class="text-3xl font-bold text-center text-blue-600 mb-2">
+            Personal To-Do List
+        </h1>
+
+        <p class="text-center text-gray-500 mb-6">
+            Organize your academic and personal tasks
+        </p>
+
+        <!-- Input Section -->
+        <div class="flex gap-2 mb-6">
+            <input
+                type="text"
+                id="taskInput"
+                placeholder="Enter a task..."
+                class="flex-1 border border-gray-300 rounded-lg px-4 py-2 
+                       focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+
+            <button
+                onclick="addTask()"
+                class="bg-blue-600 text-white px-5 py-2 rounded-lg 
+                       hover:bg-blue-700 transition">
+                Add
+            </button>
+        </div>
+
+        <!-- Task List -->
+        <ul id="taskList" class="space-y-3"></ul>
+
+        <!-- Student Name -->
+        <p class="text-center text-gray-500 text-sm mt-6">
+            Created by pranay yadav
+        </p>
+
+    </div>
+
+    <script>
+        function addTask() {
+            const input = document.getElementById("taskInput");
+            const taskText = input.value.trim();
+
+            if (taskText === "") {
+                alert("Please enter a task!");
+                return;
+            }
+
+            // Create task item
+            const li = document.createElement("li");
+
+            li.className =
+                "flex items-center justify-between bg-gray-50 border " +
+                "border-gray-200 p-3 rounded-lg";
+
+            li.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <input
+                        type="checkbox"
+                        onchange="completeTask(this)"
+                        class="w-5 h-5 accent-blue-600"
+                    >
+
+                    <span class="task-text text-gray-700">
+                        ${taskText}
+                    </span>
+                </div>
+
+                <button
+                    onclick="deleteTask(this)"
+                    class="bg-red-500 text-white px-3 py-1 rounded-lg 
+                           hover:bg-red-600">
+                    Delete
+                </button>
+            `;
+
+            document.getElementById("taskList").appendChild(li);
+
+            // Clear input
+            input.value = "";
+            input.focus();
+        }
+
+        // Mark task as completed
+        function completeTask(checkbox) {
+            const task = checkbox.parentElement.querySelector(".task-text");
+
+            if (checkbox.checked) {
+                task.classList.add("line-through", "text-gray-400");
+            } else {
+                task.classList.remove("line-through", "text-gray-400");
+            }
+        }
+
+        // Delete task
+        function deleteTask(button) {
+            button.parentElement.remove();
+        }
+
+        // Add task using Enter key
+        document.getElementById("taskInput").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                addTask();
+            }
+        });
+    </script>
+
+</body>
+</html>
